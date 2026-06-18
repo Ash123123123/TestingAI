@@ -5,4 +5,7 @@ xgboost
 ta
 pyotp
 smartapi-python
+logzero
+websocket-client
+python-dateutil
 requests
