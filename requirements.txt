@@ -4,5 +4,5 @@ numpy
 xgboost
 ta
 pyotp
-smartapi-python
+smartapi
 requests
