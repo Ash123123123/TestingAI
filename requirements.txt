@@ -9,3 +9,5 @@ logzero
 websocket-client
 python-dateutil
 requests
+scikit-learn
+scipy
