@@ -4,7 +4,7 @@ numpy
 xgboost
 ta
 pyotp
-smartapi-python
+smartapi
 logzero
 websocket-client
 python-dateutil
