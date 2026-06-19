@@ -7,7 +7,7 @@ import pyotp
 import requests
 from SmartApi import SmartConnect
 from datetime import datetime, timedelta
-import pytz  # <-- ADD THIS LINE
+import pytz  
 
 # ---------------------------------------------------------
 # Page Configurations
@@ -38,10 +38,8 @@ except KeyError as e:
 # ---------------------------------------------------------
 st.sidebar.header("📊 Strategy Settings")
 
-# Added NFO to the exchange list for Nifty/BankNifty Futures & Options
 exchange_input = st.sidebar.selectbox("Exchange", ["NSE", "NFO", "MCX"], index=0)
 
-# Text input to show examples for all exchanges
 ticker_input = st.sidebar.text_input(
     "Trading Symbol (e.g., RELIANCE-EQ, NIFTY26JUNFUT)", 
     value="Nifty 50"
@@ -59,7 +57,6 @@ st.sidebar.write("More days = more data, but takes longer to train.")
 training_days = st.sidebar.slider("Historical Training Days", min_value=10, max_value=90, value=30, step=5)
 
 # --- ANGEL ONE API SAFETY CAPS ---
-# Angel One silently returns empty data if you request too many days for small intervals
 limit_msg = ""
 if interval == "FIVE_MINUTE" and training_days > 30:
     training_days = 30
@@ -76,7 +73,6 @@ sl_multiplier = st.sidebar.slider("Stop Loss (ATR Multiplier)", min_value=0.5, m
 tp1_multiplier = st.sidebar.slider("Target 1 (ATR Multiplier)", min_value=0.5, max_value=3.0, value=1.5, step=0.1)
 tp2_multiplier = st.sidebar.slider("Target 2 (ATR Multiplier)", min_value=1.0, max_value=5.0, value=2.5, step=0.1)
 
-# Cache the Master Token list downloading process to keep execution fast
 @st.cache_data
 def load_scrip_master():
     url = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
@@ -89,10 +85,8 @@ def load_scrip_master():
 if st.sidebar.button("Run Live Predictive Analytics"):
     with st.spinner(f"Pulling {training_days} days of data & training optimized AI..."):
         try:
-            # A. Token Map Discovery
             scrip_df = load_scrip_master()
             
-            # Auto-correct common Nifty typing mistakes
             search_ticker = ticker_input.upper()
             if search_ticker == "NIFTY":
                 search_ticker = "NIFTY 50"
@@ -109,7 +103,6 @@ if st.sidebar.button("Run Live Predictive Analytics"):
             symbol_token = token_row.iloc[0]['token']
             st.info(f"Connected to Token Mapping Reference ID: {symbol_token} on {exchange_input}")
 
-            # B. Establish SmartConnect API Authentication
             smart_conn = SmartConnect(api_key=api_key)
             totp_token = pyotp.TOTP(totp_key).now()
             session_data = smart_conn.generateSession(client_id, password, totp_token)
@@ -118,7 +111,6 @@ if st.sidebar.button("Run Live Predictive Analytics"):
                 st.error(f"Authentication Failure: {session_data.get('message')}")
                 st.stop()
             
-            # C. Download Multi-Day Historical Data (Forced to IST)
             ist = pytz.timezone('Asia/Kolkata')
             current_ist_time = datetime.now(ist)
             
@@ -135,20 +127,16 @@ if st.sidebar.button("Run Live Predictive Analytics"):
             
             history = smart_conn.getCandleData(candle_params)
             
-            # D. Parse Data & Enhanced Feature Engineering
             if history.get('status') and history.get('data'):
                 raw_data = history['data']
                 df = pd.DataFrame(raw_data, columns=['Timestamp', 'Open', 'High', 'Low', 'Close', 'Volume'])
                 
-                # Defensively force correct data types to prevent structural calculation failures
                 for col in ['Open', 'High', 'Low', 'Close', 'Volume']:
                     df[col] = pd.to_numeric(df[col])
                 
-                # Set actual timestamp as index for the chart
                 df['Timestamp'] = pd.to_datetime(df['Timestamp'])
                 df.set_index('Timestamp', inplace=True)
                 
-                # Compute Core Input Features
                 df['RSI'] = ta.momentum.RSIIndicator(close=df['Close'], window=14).rsi()
                 macd = ta.trend.MACD(close=df['Close'])
                 df['MACD'] = macd.macd()
@@ -158,7 +146,6 @@ if st.sidebar.button("Run Live Predictive Analytics"):
                 df['SMA_21'] = ta.trend.SMAIndicator(close=df['Close'], window=21).sma_indicator()
                 df['MA_Diff'] = df['SMA_9'] - df['SMA_21']
                 
-                # NEW ADVANCED FEATURES
                 df['OBV'] = ta.volume.OnBalanceVolumeIndicator(close=df['Close'], volume=df['Volume']).on_balance_volume()
                 df['ADX'] = ta.trend.ADXIndicator(high=df['High'], low=df['Low'], close=df['Close'], window=14).adx()
                 bb = ta.volatility.BollingerBands(close=df['Close'], window=20, window_dev=2)
@@ -168,87 +155,91 @@ if st.sidebar.button("Run Live Predictive Analytics"):
                 df.dropna(inplace=True)
                 
                 # =====================================================================
-# OPTIMIZED STEP 3E: Volatility-Adjusted Target Labeling (No-Trade Zones)
-# =====================================================================
-# Require the price to move at least 0.5 * ATR to be considered a directional trend
-df['Future_Close'] = df['Close'].shift(-predict_ahead)
-df['Price_Change'] = df['Future_Close'] - df['Close']
-df['Volatility_Threshold'] = df['ATR'] * 0.5
+                # OPTIMIZED STEP 3E: Volatility-Adjusted Target Labeling
+                # =====================================================================
+                df['Future_Close'] = df['Close'].shift(-predict_ahead)
+                df['Price_Change'] = df['Future_Close'] - df['Close']
+                df['Volatility_Threshold'] = df['ATR'] * 0.5
 
-# 2 = Bullish, 1 = Bearish, 0 = Neutral/Choppy No-Trade Zone
-df['Target'] = np.where(df['Price_Change'] > df['Volatility_Threshold'], 2,
-               np.where(df['Price_Change'] < -df['Volatility_Threshold'], 1, 0))
+                # 2 = Bullish, 1 = Bearish, 0 = Neutral/Choppy No-Trade Zone
+                df['Target'] = np.where(df['Price_Change'] > df['Volatility_Threshold'], 2,
+                               np.where(df['Price_Change'] < -df['Volatility_Threshold'], 1, 0))
 
-# Isolate latest active row before dropping training offsets
-live_row = df.iloc[[-1]].copy()
-df.dropna(inplace=True)
+                live_row = df.iloc[[-1]].copy()
+                df.dropna(inplace=True)
 
-features = ['RSI', 'MACD', 'MACD_Signal', 'ATR', 'MA_Diff', 'OBV', 'ADX', 'BB_Width', 'Stoch_RSI', 'Volume']
-X = df[features]
-y = df['Target']
+                features = ['RSI', 'MACD', 'MACD_Signal', 'ATR', 'MA_Diff', 'OBV', 'ADX', 'BB_Width', 'Stoch_RSI', 'Volume']
+                X = df[features]
+                y = df['Target']
 
-# =====================================================================
-# OPTIMIZED STEP 3F: Ultra-Conservative Regularized XGBoost 
-# =====================================================================
-model = xgb.XGBClassifier(
-    n_estimators=180,
-    max_depth=3,                  # Shallow trees prevent overfitting noise
-    learning_rate=0.02,           # Conservative steps
-    subsample=0.65,               # Row dropouts
-    colsample_bytree=0.65,        # Column dropouts
-    min_child_weight=10,          # Minimum data density required per rule
-    objective='multi:softprob',   # Handle three classes (0, 1, 2)
-    random_state=42
-)
-model.fit(X, y)
+                # =====================================================================
+                # OPTIMIZED STEP 3F: Ultra-Conservative Regularized XGBoost 
+                # =====================================================================
+                model = xgb.XGBClassifier(
+                    n_estimators=180,
+                    max_depth=3,                  
+                    learning_rate=0.02,           
+                    subsample=0.65,               
+                    colsample_bytree=0.65,        
+                    min_child_weight=10,          
+                    objective='multi:softprob',   
+                    random_state=42
+                )
+                model.fit(X, y)
                 
                 # G. Make Prediction Metrics
                 X_live = live_row[features]
                 prediction = model.predict(X_live)[0]
                 probabilities = model.predict_proba(X_live)[0]
                 
-                # H. Calculate Stop Loss and Targets (ATR-based)
                 ltp = live_row['Close'].values[0]
                 latest_atr = live_row['ATR'].values[0]
                 
-                if prediction == 1: # BULLISH
-                    sl_price = ltp - (latest_atr * sl_multiplier)
-                    tp1_price = ltp + (latest_atr * tp1_multiplier)
-                    tp2_price = ltp + (latest_atr * tp2_multiplier)
-                else: # BEARISH
-                    sl_price = ltp + (latest_atr * sl_multiplier)
-                    tp1_price = ltp - (latest_atr * tp1_multiplier)
-                    tp2_price = ltp - (latest_atr * tp2_multiplier)
+                # Multi-Class Target Handling
+                if prediction == 2: # BULLISH
+                    signal_text = "🟢 BULLISH (BUY)"
+                    confidence_metric = probabilities[2]
+                    sl_price = f"₹{(ltp - (latest_atr * sl_multiplier)):.2f}"
+                    tp1_price = f"₹{(ltp + (latest_atr * tp1_multiplier)):.2f}"
+                    tp2_price = f"₹{(ltp + (latest_atr * tp2_multiplier)):.2f}"
+                elif prediction == 1: # BEARISH
+                    signal_text = "🔴 BEARISH (SELL)"
+                    confidence_metric = probabilities[1]
+                    sl_price = f"₹{(ltp + (latest_atr * sl_multiplier)):.2f}"
+                    tp1_price = f"₹{(ltp - (latest_atr * tp1_multiplier)):.2f}"
+                    tp2_price = f"₹{(ltp - (latest_atr * tp2_multiplier)):.2f}"
+                else: # NEUTRAL / CHOPPY
+                    signal_text = "⚪ NEUTRAL (NO TRADE)"
+                    confidence_metric = probabilities[0]
+                    sl_price = "N/A"
+                    tp1_price = "N/A"
+                    tp2_price = "N/A"
 
                 # ---------------------------------------------------------
                 # Step 4: Streamlit UI Component Output
                 # ---------------------------------------------------------
                 st.success("Analysis Complete! Live predictions generated successfully.")
                 
-                # Top Metrics: AI Prediction
                 metric_col1, metric_col2, metric_col3 = st.columns(3)
                 with metric_col1:
                     st.metric(label="Last Traded Price (LTP)", value=f"₹{ltp:.2f}")
                 with metric_col2:
-                    signal_text = "🟢 BULLISH (BUY)" if prediction == 1 else "🔴 BEARISH (SELL)"
                     st.metric(label="XGBoost Algorithmic Signal", value=signal_text)
                 with metric_col3:
-                    confidence_metric = probabilities[1] if prediction == 1 else probabilities[0]
                     st.metric(label="Model Predictive Confidence", value=f"{confidence_metric * 100:.2f}%")
                 
                 st.divider()
                 
-                # Secondary Metrics: Trade Setup
                 st.subheader("🎯 AI Trade Setup Targets")
                 st.write(f"Based on current market volatility (ATR: ₹{latest_atr:.2f})")
                 
                 setup_col1, setup_col2, setup_col3 = st.columns(3)
                 with setup_col1:
-                    st.metric(label="🛑 Stop Loss (SL)", value=f"₹{sl_price:.2f}")
+                    st.metric(label="🛑 Stop Loss (SL)", value=sl_price)
                 with setup_col2:
-                    st.metric(label="🎯 Target 1 (TP1)", value=f"₹{tp1_price:.2f}")
+                    st.metric(label="🎯 Target 1 (TP1)", value=tp1_price)
                 with setup_col3:
-                    st.metric(label="🚀 Target 2 (TP2)", value=f"₹{tp2_price:.2f}")
+                    st.metric(label="🚀 Target 2 (TP2)", value=tp2_price)
 
                 st.divider()
                 
@@ -258,7 +249,6 @@ model.fit(X, y)
                 st.subheader("Historical Trajectory Visualization")
                 st.line_chart(df['Close'].tail(75))
                 
-                # Terminate active developer session cleanly
                 smart_conn.terminateSession(client_id)
             else:
                 st.error(f"Failed to fetch data payload from backend node: {history.get('message')} (Data payload was empty. Check if the market was closed or if the expiry date is valid).")
