@@ -85,10 +85,10 @@ def load_scrip_master():
 st.sidebar.divider()
 st.sidebar.header("⏱️ Live Execution")
 is_active = st.sidebar.toggle("▶️ Activate AI Dashboard", value=False)
-auto_refresh = st.sidebar.checkbox("🔄 Auto-Refresh Every 15 Min", value=True)
+auto_refresh = st.sidebar.checkbox("🔄 Auto-Refresh Every 1 Min", value=True)
 
 # 900 seconds equals exactly 15 minutes
-refresh_rate = 900 if auto_refresh else None
+refresh_rate = 60 if auto_refresh else None
 
 # =====================================================================
 # THE BACKGROUND ENGINE (ST.FRAGMENT)
