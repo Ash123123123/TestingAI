@@ -85,17 +85,17 @@ def load_scrip_master():
 st.sidebar.divider()
 st.sidebar.header("⏱️ Live Execution")
 is_active = st.sidebar.toggle("▶️ Activate AI Dashboard", value=False)
-auto_refresh = st.sidebar.checkbox("🔄 Auto-Refresh Every 1 Min", value=True)
-refresh_rate = 60 if auto_refresh else None
+auto_refresh = st.sidebar.checkbox("🔄 Auto-Refresh Every 15 Min", value=True)
+
+# 900 seconds equals exactly 15 minutes
+refresh_rate = 900 if auto_refresh else None
 
 # =====================================================================
 # THE BACKGROUND ENGINE (ST.FRAGMENT)
-# Everything inside this function will auto-rerun based on the refresh rate!
 # =====================================================================
 @st.fragment(run_every=refresh_rate)
 def run_predictive_engine():
     
-    # Display the exact time the engine last ran
     current_time_str = datetime.now(pytz.timezone('Asia/Kolkata')).strftime("%I:%M:%S %p")
     st.caption(f"⏳ **Live Feed Last Updated:** {current_time_str} IST")
     
@@ -204,7 +204,8 @@ def run_predictive_engine():
                 ltp = live_row['Close'].values[0]
                 latest_atr = live_row['ATR'].values[0]
                 
-                # Multi-Class Target Handling
+                # Multi-Class Target Handling & Undercurrent Bias Extraction
+                bias_info = ""
                 if prediction == 2: # BULLISH
                     signal_text = "🟢 BULLISH (BUY)"
                     confidence_metric = probabilities[2]
@@ -217,17 +218,30 @@ def run_predictive_engine():
                     sl_price = f"₹{(ltp + (latest_atr * sl_multiplier)):.2f}"
                     tp1_price = f"₹{(ltp - (latest_atr * tp1_multiplier)):.2f}"
                     tp2_price = f"₹{(ltp - (latest_atr * tp2_multiplier)):.2f}"
-                else: # NEUTRAL / CHOPPY
-                    signal_text = "⚪ NEUTRAL (NO TRADE)"
+                else: # NEUTRAL / CHOPPY ZONE
                     confidence_metric = probabilities[0]
-                    sl_price = "N/A"
-                    tp1_price = "N/A"
-                    tp2_price = "N/A"
+                    # Evaluate structural secondary probabilities to locate underlying bias
+                    if probabilities[2] > probabilities[1]:
+                        signal_text = "⚪ NEUTRAL (Leaning BULLISH 📈)"
+                        bias_info = f"💡 **Undercurrent Analysis:** Volatility is compressed inside a consolidation bound, but structural price actions exhibit a stronger **Bullish bias** with a secondary breakout probability of **{probabilities[2] * 100:.2f}%**."
+                        sl_price = f"₹{(ltp - (latest_atr * sl_multiplier)):.2f} (Soft)"
+                        tp1_price = f"₹{(ltp + (latest_atr * tp1_multiplier)):.2f} (Soft)"
+                        tp2_price = f"₹{(ltp + (latest_atr * tp2_multiplier)):.2f} (Soft)"
+                    else:
+                        signal_text = "⚪ NEUTRAL (Leaning BEARISH 📉)"
+                        bias_info = f"💡 **Undercurrent Analysis:** Volatility is compressed inside a consolidation bound, but structural price actions exhibit a stronger **Bearish bias** with a secondary breakdown probability of **{probabilities[1] * 100:.2f}%**."
+                        sl_price = f"₹{(ltp + (latest_atr * sl_multiplier)):.2f} (Soft)"
+                        tp1_price = f"₹{(ltp - (latest_atr * tp1_multiplier)):.2f} (Soft)"
+                        tp2_price = f"₹{(ltp - (latest_atr * tp2_multiplier)):.2f} (Soft)"
 
                 # ---------------------------------------------------------
                 # Step 4: Streamlit UI Component Output
                 # ---------------------------------------------------------
                 st.success("Analysis Complete! Background monitoring is active.")
+                
+                # Secondary Bias Deep Dive Information Callout
+                if bias_info:
+                    st.info(bias_info)
                 
                 metric_col1, metric_col2, metric_col3 = st.columns(3)
                 with metric_col1:
@@ -235,7 +249,7 @@ def run_predictive_engine():
                 with metric_col2:
                     st.metric(label="XGBoost Algorithmic Signal", value=signal_text)
                 with metric_col3:
-                    st.metric(label="Model Predictive Confidence", value=f"{confidence_metric * 100:.2f}%")
+                    st.metric(label="Primary Cluster Confidence", value=f"{confidence_metric * 100:.2f}%")
                 
                 st.divider()
                 
