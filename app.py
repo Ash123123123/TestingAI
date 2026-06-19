@@ -167,29 +167,40 @@ if st.sidebar.button("Run Live Predictive Analytics"):
                 
                 df.dropna(inplace=True)
                 
-                # E. Target Vector Isolation
-                df['Future_Close'] = df['Close'].shift(-predict_ahead)
-                df['Target'] = np.where(df['Future_Close'] > df['Close'], 1, 0)
-                
-                # Isolate the latest active row before dropping training offsets
-                live_row = df.iloc[[-1]].copy()
-                df.dropna(inplace=True)
-                
-                # Updated Feature List for the Model
-                features = ['RSI', 'MACD', 'MACD_Signal', 'ATR', 'MA_Diff', 'OBV', 'ADX', 'BB_Width', 'Stoch_RSI', 'Volume']
-                X = df[features]
-                y = df['Target']
-                
-                # F. Fit Optimized XGBoost Model Framework
-                model = xgb.XGBClassifier(
-                    n_estimators=150,        # More learning cycles
-                    max_depth=4,             # Deeper pattern recognition
-                    learning_rate=0.03,      # Smoother learning curve
-                    subsample=0.8,           # Prevents overfitting via random data sampling
-                    colsample_bytree=0.8,    # Prevents overfitting via random feature sampling
-                    random_state=42
-                )
-                model.fit(X, y)
+                # =====================================================================
+# OPTIMIZED STEP 3E: Volatility-Adjusted Target Labeling (No-Trade Zones)
+# =====================================================================
+# Require the price to move at least 0.5 * ATR to be considered a directional trend
+df['Future_Close'] = df['Close'].shift(-predict_ahead)
+df['Price_Change'] = df['Future_Close'] - df['Close']
+df['Volatility_Threshold'] = df['ATR'] * 0.5
+
+# 2 = Bullish, 1 = Bearish, 0 = Neutral/Choppy No-Trade Zone
+df['Target'] = np.where(df['Price_Change'] > df['Volatility_Threshold'], 2,
+               np.where(df['Price_Change'] < -df['Volatility_Threshold'], 1, 0))
+
+# Isolate latest active row before dropping training offsets
+live_row = df.iloc[[-1]].copy()
+df.dropna(inplace=True)
+
+features = ['RSI', 'MACD', 'MACD_Signal', 'ATR', 'MA_Diff', 'OBV', 'ADX', 'BB_Width', 'Stoch_RSI', 'Volume']
+X = df[features]
+y = df['Target']
+
+# =====================================================================
+# OPTIMIZED STEP 3F: Ultra-Conservative Regularized XGBoost 
+# =====================================================================
+model = xgb.XGBClassifier(
+    n_estimators=180,
+    max_depth=3,                  # Shallow trees prevent overfitting noise
+    learning_rate=0.02,           # Conservative steps
+    subsample=0.65,               # Row dropouts
+    colsample_bytree=0.65,        # Column dropouts
+    min_child_weight=10,          # Minimum data density required per rule
+    objective='multi:softprob',   # Handle three classes (0, 1, 2)
+    random_state=42
+)
+model.fit(X, y)
                 
                 # G. Make Prediction Metrics
                 X_live = live_row[features]
