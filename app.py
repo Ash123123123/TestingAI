@@ -118,9 +118,12 @@ if st.sidebar.button("Run Live Predictive Analytics"):
                 st.error(f"Authentication Failure: {session_data.get('message')}")
                 st.stop()
             
-            # C. Download Multi-Day Historical Data
-            to_date = datetime.now().strftime("%Y-%m-%d %H:%M")
-            from_date = (datetime.now() - timedelta(days=training_days)).strftime("%Y-%m-%d %H:%M")
+            # C. Download Multi-Day Historical Data (Forced to IST)
+            ist = pytz.timezone('Asia/Kolkata')
+            current_ist_time = datetime.now(ist)
+            
+            to_date = current_ist_time.strftime("%Y-%m-%d %H:%M")
+            from_date = (current_ist_time - timedelta(days=training_days)).strftime("%Y-%m-%d %H:%M")
             
             candle_params = {
                 "exchange": exchange_input,
