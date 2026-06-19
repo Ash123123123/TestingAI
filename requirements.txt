@@ -4,10 +4,11 @@ numpy
 xgboost
 ta
 pyotp
-smartapi
+smartapi-python
 logzero
 websocket-client
 python-dateutil
 requests
 scikit-learn
 scipy
+pytz
