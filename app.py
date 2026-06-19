@@ -7,6 +7,7 @@ import pyotp
 import requests
 from SmartApi import SmartConnect
 from datetime import datetime, timedelta
+import pytz  # <-- ADD THIS LINE
 
 # ---------------------------------------------------------
 # Page Configurations
