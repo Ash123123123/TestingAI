@@ -80,9 +80,27 @@ def load_scrip_master():
     return pd.DataFrame(response)
 
 # ---------------------------------------------------------
-# Step 3: Main Execution Flow
+# Step 3: Automated Execution Settings
 # ---------------------------------------------------------
-if st.sidebar.button("Run Live Predictive Analytics"):
+st.sidebar.divider()
+st.sidebar.header("⏱️ Live Execution")
+is_active = st.sidebar.toggle("▶️ Activate AI Dashboard", value=False)
+auto_refresh = st.sidebar.checkbox("🔄 Auto-Refresh Every 15 Min", value=True)
+
+# 900 seconds equals exactly 15 minutes
+refresh_rate = 900 if auto_refresh else None
+
+# =====================================================================
+# THE BACKGROUND ENGINE (ST.FRAGMENT)
+# Everything inside this function will auto-rerun based on the refresh rate!
+# =====================================================================
+@st.fragment(run_every=refresh_rate)
+def run_predictive_engine():
+    
+    # Display the exact time the engine last ran
+    current_time_str = datetime.now(pytz.timezone('Asia/Kolkata')).strftime("%I:%M:%S %p")
+    st.caption(f"⏳ **Live Feed Last Updated:** {current_time_str} IST")
+    
     with st.spinner(f"Pulling {training_days} days of data & training optimized AI..."):
         try:
             scrip_df = load_scrip_master()
@@ -154,9 +172,6 @@ if st.sidebar.button("Run Live Predictive Analytics"):
                 
                 df.dropna(inplace=True)
                 
-                # =====================================================================
-                # OPTIMIZED STEP 3E: Volatility-Adjusted Target Labeling
-                # =====================================================================
                 df['Future_Close'] = df['Close'].shift(-predict_ahead)
                 df['Price_Change'] = df['Future_Close'] - df['Close']
                 df['Volatility_Threshold'] = df['ATR'] * 0.5
@@ -172,9 +187,6 @@ if st.sidebar.button("Run Live Predictive Analytics"):
                 X = df[features]
                 y = df['Target']
 
-                # =====================================================================
-                # OPTIMIZED STEP 3F: Ultra-Conservative Regularized XGBoost 
-                # =====================================================================
                 model = xgb.XGBClassifier(
                     n_estimators=180,
                     max_depth=3,                  
@@ -187,7 +199,6 @@ if st.sidebar.button("Run Live Predictive Analytics"):
                 )
                 model.fit(X, y)
                 
-                # G. Make Prediction Metrics
                 X_live = live_row[features]
                 prediction = model.predict(X_live)[0]
                 probabilities = model.predict_proba(X_live)[0]
@@ -218,7 +229,7 @@ if st.sidebar.button("Run Live Predictive Analytics"):
                 # ---------------------------------------------------------
                 # Step 4: Streamlit UI Component Output
                 # ---------------------------------------------------------
-                st.success("Analysis Complete! Live predictions generated successfully.")
+                st.success("Analysis Complete! Background monitoring is active.")
                 
                 metric_col1, metric_col2, metric_col3 = st.columns(3)
                 with metric_col1:
@@ -243,7 +254,7 @@ if st.sidebar.button("Run Live Predictive Analytics"):
 
                 st.divider()
                 
-                st.subheader("Live Vector Attributes Table (Expanded)")
+                st.subheader("Live Vector Attributes Table")
                 st.dataframe(X_live.style.format("{:.4f}"))
                 
                 st.subheader("Historical Trajectory Visualization")
@@ -255,3 +266,11 @@ if st.sidebar.button("Run Live Predictive Analytics"):
                 
         except Exception as error:
             st.error(f"An exception crashed the background runtime: {error}")
+
+# =====================================================================
+# START/STOP LOGIC
+# =====================================================================
+if is_active:
+    run_predictive_engine()
+else:
+    st.info("👈 Please flip the 'Activate AI Dashboard' toggle in the sidebar to initiate the live data feed.")
